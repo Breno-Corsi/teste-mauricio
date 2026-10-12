@@ -112,13 +112,14 @@ function selectField({ name, label, options, value, cls = '' }) {
 }
 
 const MASCARAS = {
+  // CPF (só números) ou CNPJ (numérico ou alfanumérico)
   doc(v) {
-    const d = v.replace(/\D/g, '').slice(0, 14);
-    if (d.length <= 11) {
+    const d = v.toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 14);
+    if (d.length <= 11 && /^\d*$/.test(d)) {
       return d.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2');
     }
-    return d.replace(/^(\d{2})(\d)/, '$1.$2').replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
-      .replace(/\.(\d{3})(\d)/, '.$1/$2').replace(/(\d{4})(\d)/, '$1-$2');
+    return d.replace(/^(\w{2})(\w)/, '$1.$2').replace(/^(\w{2})\.(\w{3})(\w)/, '$1.$2.$3')
+      .replace(/\.(\w{3})(\w)/, '.$1/$2').replace(/\/(\w{4})(\w)/, '/$1-$2');
   },
   tel(v) {
     const d = v.replace(/\D/g, '').slice(0, 11);
@@ -509,7 +510,7 @@ function abrirFormCliente(cliente, aoSalvar) {
       </div>
       <div class="form-grid">
         ${field({ name: 'nome', label: 'Nome / Razão social', value: c.nome, cls: 'span-2', attrs: 'required maxlength="160" autofocus' })}
-        ${field({ name: 'documento', label: 'CPF / CNPJ', value: c.documento, attrs: 'data-mask="doc" inputmode="numeric"' })}
+        ${field({ name: 'documento', label: 'CPF / CNPJ', value: c.documento, attrs: 'data-mask="doc" autocomplete="off"', hint: DICA_CNPJ })}
         ${field({ name: 'contato', label: 'Pessoa de contato', value: c.contato, attrs: 'maxlength="120"' })}
         ${field({ name: 'email', label: 'E-mail', type: 'email', value: c.email, attrs: 'maxlength="160"' })}
         ${field({ name: 'telefone', label: 'Telefone', type: 'tel', value: c.telefone, attrs: 'data-mask="tel"' })}
@@ -524,6 +525,65 @@ function abrirFormCliente(cliente, aoSalvar) {
       toast(cliente ? 'Cliente atualizado.' : 'Cliente cadastrado.');
       await aoSalvar?.();
     },
+    aoAbrir: (dlg) => configurarBuscaCnpj($('form', dlg)),
+  });
+}
+
+const DICA_CNPJ = 'Digite um CNPJ para preencher os dados da Receita automaticamente.';
+
+// Ao completar um CNPJ, busca os dados na Receita e preenche o formulário.
+// Só sobrescreve campos vazios ou que foram preenchidos por uma busca anterior.
+function configurarBuscaCnpj(form) {
+  const doc = $('[name=documento]', form);
+  const aviso = $('small', doc.closest('.field'));
+  let ultimo = '';
+  let consulta = 0;
+
+  const mostrar = (texto, tipo = '') => {
+    aviso.textContent = texto;
+    aviso.className = tipo ? `aviso-${tipo}` : '';
+  };
+
+  const preencher = (dados) => {
+    const valores = { ...dados, observacoes: dados.nome_fantasia ? `Nome fantasia: ${dados.nome_fantasia}` : '' };
+    for (const campo of ['nome', 'email', 'telefone', 'cep', 'endereco', 'cidade', 'uf', 'observacoes']) {
+      const input = $(`[name=${campo}]`, form);
+      const valor = valores[campo];
+      if (!valor || (input.value.trim() && input.value !== input.dataset.auto)) continue;
+      input.value = valor;
+      input.dataset.auto = valor;
+      input.classList.remove('preenchido');
+      void input.offsetWidth; // reinicia a animação de destaque
+      input.classList.add('preenchido');
+    }
+    $('[name=tipo][value=PJ]', form).checked = true;
+  };
+
+  doc.addEventListener('input', async () => {
+    const cnpj = doc.value.toUpperCase().replace(/[^0-9A-Z]/g, '');
+    const ehCnpj = cnpj.length === 14 || /[A-Z]/.test(cnpj);
+    if (cnpj.length !== 14) {
+      ultimo = '';
+      consulta++;
+      mostrar(ehCnpj || cnpj.length > 11 ? 'Continue digitando o CNPJ…' : DICA_CNPJ);
+      return;
+    }
+    if (cnpj === ultimo) return;
+    ultimo = cnpj;
+
+    const id = ++consulta;
+    mostrar('Consultando a Receita Federal…', 'carregando');
+    try {
+      const dados = await api('/cnpj/' + cnpj);
+      if (id !== consulta) return;
+      preencher(dados);
+      const ativa = !dados.situacao || dados.situacao === 'ATIVA';
+      mostrar(ativa
+        ? `Dados preenchidos pela Receita · situação ${dados.situacao || 'não informada'}`
+        : `Atenção: empresa com situação ${dados.situacao} na Receita`, ativa ? 'ok' : 'alerta');
+    } catch (e) {
+      if (id === consulta) mostrar(e.message, 'erro');
+    }
   });
 }
 

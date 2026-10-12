@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db, ETAPAS, transacao } from './db.js';
 import { hashSenha, verificarSenha, iniciarSessao, encerrarSessao, requireAuth } from './auth.js';
+import { consultarCnpj, cnpjValido, normalizarCnpj, ErroCnpj } from './cnpj.js';
 
 export const api = Router();
 
@@ -172,6 +173,17 @@ api.delete('/clientes/:id', (req, res) => {
     .run(Number(req.params.id), req.empresa.id);
   if (!changes) return res.status(404).json({ erro: 'Cliente não encontrado.' });
   res.status(204).end();
+});
+
+api.get('/cnpj/:cnpj', async (req, res, next) => {
+  const cnpj = normalizarCnpj(req.params.cnpj);
+  if (!cnpjValido(cnpj)) return res.status(400).json({ erro: 'CNPJ inválido. Confira os dígitos.' });
+  try {
+    res.json(await consultarCnpj(cnpj));
+  } catch (e) {
+    if (e instanceof ErroCnpj) return res.status(e.status).json({ erro: e.message });
+    next(e);
+  }
 });
 
 /* ---------- Projetos (linha de produção) ---------- */

@@ -93,6 +93,18 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .field input:focus, .field select:focus, .field textarea:focus, .select:focus, .search input:focus {
   outline: none; border-color: var(--oak); box-shadow: var(--ring);
 }
+.field small.aviso-ok { color: var(--ok); font-weight: 600; }
+.field small.aviso-erro { color: var(--danger); font-weight: 600; }
+.field small.aviso-alerta { color: #a15c00; font-weight: 600; }
+.field small.aviso-carregando { color: var(--oak-600); }
+.field small.aviso-carregando::before {
+  content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px;
+  border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+  animation: girar .7s linear infinite;
+}
+@keyframes girar { to { transform: rotate(360deg); } }
+.field .preenchido { animation: preenchido 1.4s ease-out; }
+@keyframes preenchido { from { background: var(--oak-50); border-color: var(--oak); } }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
 .span-2 { grid-column: span 2; }
 .form-erro {
